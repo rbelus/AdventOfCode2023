@@ -7,7 +7,7 @@ def intersects(xMin, xMax, yMin, yMax):
 
 sys.path.append(os.path.dirname(__file__))
 os.chdir(os.path.dirname(__file__))
-input = open("inputTest", "r")
+input = open("input", "r")
 
 curLine = input.readline()
 numRegex = regex.compile(r"\d+")
@@ -52,24 +52,58 @@ while curLine:
 
 print("day5, part 1 : ", min(seedList))
 
-input = open("inputTest", "r")
+input = open("input", "r")
 curLine = input.readline()
 numRegex = regex.compile(r"\d+")
 mapRegex = regex.compile(r".*map:")
 
 seedList = [int(seed) for seed in numRegex.findall(curLine)]
 
+class _SeedRange:
+    # stored in [a,b[ fashion
+    a = 0
+    b = 0
+    transformed = False
+    foundRule = False
+
+    def __init__(self, a, b, t, f):
+        self.a = a
+        self.b = b
+        self.transformed = t
+        self.foundRule = f
+
+    def GetSize(self):
+        return self.b - self.a
+
+class _MapRule:
+    dstBegin = 0
+    # stored in [a,b[ fashion
+    srcA = 0
+    srcB = 0
+
+    def __init__(self, dst, a, b):
+        self.dstBegin = dst
+        self.srcA = a
+        self.srcB = b
+
+    def GetSrcSize(self):
+        return self.srcB - self.srcA
+
 rangeSeedList = []
 for i in range(len(seedList) // 2):
     rangeStart = seedList[2*i]
     rangeLen = seedList[2*i+1]
-    rangeSeedList.append([rangeStart, rangeLen])
+    # rangeSeedList.append([rangeStart, rangeLen])
+    rangeSeedList.append(_SeedRange(rangeStart, rangeStart + rangeLen, False, False))
 
-totalSeeds = sum([seed[1] for seed in rangeSeedList])
+totalSeeds = sum([seed.GetSize() for seed in rangeSeedList])
+
+mappingList = ["soil", "fertilizer", "water", "light", "temperature", "humidity", "location"]
 
 mappingRules = []
 parsingMap = False
 doneParsingNumbers = False
+curMapping = 0
 while curLine:
     if mapRegex.match(curLine) is None and not parsingMap:
         curLine = input.readline()
@@ -81,87 +115,81 @@ while curLine:
 
     if curLine is not "\n":
         numList = numRegex.findall(curLine)
-        # destStart = numList[0]
-        # srcStart = numList[1]
-        # rangeLength = numList[2]
-        mappingRules.append([int(numList[0]), int(numList[1]), int(numList[2])])
+        mappingRules.append(_MapRule(int(numList[0]), int(numList[1]), int(numList[1]) + int(numList[2])))
     else:
         parsingMap = False
         doneParsingNumbers = True
 
     # Instead of treating seeds individually like part1, compute new ranges
     if doneParsingNumbers:
-        # newRanges = []
-        print(rangeSeedList)
-        # print(mappingRules)
+        for rule in mappingRules:
+            newRange = []
+            for seed in rangeSeedList:
+                a = seed.a
+                b = seed.b
+                if not seed.transformed:
+                    if rule.srcA <= a and b <= rule.srcB:
+                        """
+                                    a-----------b
+                                srcA---------------srcB
+                        """
+                        seed.foundRule = True
+                        newA = rule.dstBegin + (a - rule.srcA)
+                        newB = newA + (b - a)
+                        newRange.append(_SeedRange(newA, newB, True, True))
+                    elif a <= rule.srcA and rule.srcB <= b:
+                        """
+                                a-------------------b
+                                    srcA-------srcB
+                        """
+                        seed.foundRule = True
+                        if rule.srcA - a > 0:
+                            newRange.append(_SeedRange(a, rule.srcA, False, True))
+                        if rule.GetSrcSize() > 0: # is it even possible otherwise ?
+                            newRange.append(_SeedRange(rule.dstBegin, rule.dstBegin + rule.GetSrcSize(), True, True))
+                        if b - rule.srcB > 0:
+                            newRange.append(_SeedRange(rule.srcB, b, False, True))
+                    elif rule.srcA <= a <= rule.srcB <= b:
+                        """
+                                        a-------------b
+                            srcA--------------srcB                        
+                        """
+                        seed.foundRule = True
+                        if rule.srcB - a > 0:
+                            newRange.append(_SeedRange(rule.dstBegin + (a - rule.srcA), rule.dstBegin + rule.GetSrcSize(), True, True))
+                        if b - rule.srcB > 0:
+                            newRange.append(_SeedRange(rule.srcB, b, False, True))
+                    elif a <= rule.srcA <= b <= rule.srcB:
+                        """
+                                a-------------b
+                                        srcA----------srcB                        
+                        """
+                        seed.foundRule = True
+                        if rule.srcA - a > 0:
+                            newRange.append(_SeedRange(a, rule.srcA, False, True))
+                        if b - rule.srcA > 0:
+                            newRange.append(_SeedRange(rule.dstBegin, rule.dstBegin + (b - rule.srcA), True, True))
+            # Update seed list
+            for seed in rangeSeedList:
+                if not seed.foundRule:
+                    newRange.append(_SeedRange(seed.a, seed.b, seed.transformed, False))
+            rangeSeedList.clear()
+            rangeSeedList = newRange
+            for seed in rangeSeedList:
+                seed.foundRule = False
 
-        if sum([seed[1] for seed in rangeSeedList]) != totalSeeds:
-            print("problem")
+            # sizes = [seed.GetSize() for seed in rangeSeedList]
+            # curTotalSeeds = sum([seed.GetSize() for seed in rangeSeedList])
+            # assert curTotalSeeds == totalSeeds
 
-        transformedRangeSeedList = rangeSeedList.copy()
-        for i in range(len(rangeSeedList)):
-            for rule in mappingRules:
-                minRule, maxRule = rule[1], rule[1] + rule[2] - 1
-                minSeed, maxSeed = rangeSeedList[i][0], rangeSeedList[i][0] + rangeSeedList[i][1] - 1
-                # Test ranges intersect and create new ranges
-                # Given below tests, intersect test not necessary..
-                if intersects(minRule, maxRule, minSeed, maxSeed):
-                    # Create new ranges
-                    if minRule <= minSeed and maxSeed <= maxRule:
-                        # 1 range to create
-                        transformedRangeSeedList[i] = [rule[0] + minSeed - minRule, maxSeed - minSeed + 1]
-                    elif minSeed <= minRule and maxRule <= maxSeed:
-                        # 3 ranges to create
-                        transformedRangeSeedList[i] = [minSeed, minRule - minSeed]
-                        transformedRangeSeedList.append([rule[0], rule[2] + 1]) # Rule applied entirely to this range
-                        transformedRangeSeedList.append([maxRule + 1, maxSeed - maxRule])
-                    elif minSeed <= maxRule <= maxSeed:
-                        # 2 ranges to create
-                        transformedRangeSeedList[i] = [rule[0] + maxRule - minSeed, maxRule - minSeed + 1] # Rule applied partially to this range
-                        transformedRangeSeedList.append([maxRule + 1, maxSeed - maxRule])
-                        # newRanges.append([minSeed, maxRule - minSeed, rule[0] + maxRule - minSeed, maxRule - minSeed]) # Rule applied partially to this range
-                        # newRanges.append([maxRule, maxSeed - maxRule])
-                    elif minSeed <= minRule <= maxSeed:
-                        # 2 ranges to create
-                        transformedRangeSeedList[i] = [minSeed, minRule - minSeed]
-                        transformedRangeSeedList.append([rule[0], maxSeed - minRule + 1]) # Rule applied partially to this range
-                        # newRanges.append([minSeed, minRule - minSeed])
-                        # newRanges.append([minRule, maxSeed - minRule, rule[0], maxSeed - minRule]) # Rule applied partially to this range
-                    #elif minRule <= minSeed and maxSeed <= maxRule:
-                        # 1 range to create
-                    #    transformedRangeSeedList[i] = [rule[0] + minSeed - minRule, maxSeed - minSeed]
-                        # newRanges.append([minSeed, maxSeed - minSeed, rule[0] + minSeed - minRule, maxSeed - minSeed])
-
-        rangeSeedList.clear()
-        rangeSeedList = transformedRangeSeedList
-
-        # # Transform range seed list to take into account rules
-        # newRanges.sort()
-        # rangeSeedList.sort()
-        # transformedRangeSeedList = rangeSeedList.copy()
-        #
-        # for i in range(len(rangeSeedList)):
-        #     for transformedRanges in newRanges:
-        #         if intersects(rangeSeedList[i][0], rangeSeedList[i][0] + rangeSeedList[i][1], transformedRanges[0], transformedRanges[1]):
-        #             minTsf, maxTsf = transformedRanges[0], transformedRanges[1]
-        #             minSeed, maxSeed = rangeSeedList[i][0], rangeSeedList[i][1]
-        #             if minSeed <= minTsf and maxTsf <= maxSeed:
-        #                 # 3 ranges to transform
-        #                 transformedRangeSeedList[i][1] = minTsf -
-        #                 transformedRangeSeedList.append([transformedRanges[]])
-        #             elif minSeed <= maxTsf <= maxSeed:
-        #                 # 2 ranges to create
-        #
-        #             elif minSeed <= minTsf <= maxSeed:
-        #                 # 2 ranges to create
-        #
-        #             elif minTsf <= minSeed and maxSeed <= maxTsf:
-        #                 # 1 range to create
-
+        for seed in rangeSeedList:
+            seed.foundRule = False
+            seed.transformed = False
 
         doneParsingNumbers = False
         mappingRules.clear()
 
     curLine = input.readline()
 
-print("day5, part 2 : ", rangeSeedList)
+rangeSeedList.sort(key=lambda s: s.a)
+print("day5, part 2 : ", rangeSeedList[0].a)
