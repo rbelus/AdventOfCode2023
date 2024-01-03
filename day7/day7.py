@@ -87,9 +87,7 @@ for line in input.readlines():
     h, b = line.split(" ")
     handList.append(Hand(h, int(b)))
 
-print([hand.Display() + " " + hand.type for hand in handList])
 handList.sort(key=functools.cmp_to_key(Hand.cmp))
-print([hand.Display() + " " + hand.type for hand in handList])
 
 # Compute winnings
 totalWinning = 0
